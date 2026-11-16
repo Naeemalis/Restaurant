@@ -18,7 +18,7 @@ class AppDatabase {
   Future<Database> get database async {
     if (_db != null) return _db!;
     final dir = await getDatabasesPath();
-    _db = await openDatabase(p.join(dir, 'naeemsoft_restaurant.db'), version: 15, onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = OFF'); }, onOpen: (db) async { await db.execute('PRAGMA foreign_keys = ON'); }, onCreate: (db, version) async {
+    _db = await openDatabase(p.join(dir, 'naeemsoft_restaurant.db'), version: 16, onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = OFF'); }, onOpen: (db) async { await db.execute('PRAGMA foreign_keys = ON'); }, onCreate: (db, version) async {
       await db.execute("CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','cashier','storekeeper','kitchen')), pin_salt TEXT NOT NULL, pin_hash TEXT NOT NULL, must_change_pin INTEGER NOT NULL DEFAULT 0, preferred_language TEXT NOT NULL DEFAULT 'ar', is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)");
       await db.execute("CREATE TABLE categories(id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)");
       await db.execute("CREATE TABLE category_translations(id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER NOT NULL, language_code TEXT NOT NULL CHECK(language_code IN ('ar','en','fr')), name TEXT NOT NULL, UNIQUE(category_id, language_code), FOREIGN KEY(category_id) REFERENCES categories(id))");
@@ -51,6 +51,8 @@ class AppDatabase {
       await db.execute("CREATE TABLE journal_lines(id INTEGER PRIMARY KEY AUTOINCREMENT, entry_id INTEGER NOT NULL, account_id INTEGER NOT NULL, debit REAL NOT NULL DEFAULT 0 CHECK(debit>=0), credit REAL NOT NULL DEFAULT 0 CHECK(credit>=0), CHECK(NOT(debit>0 AND credit>0)), FOREIGN KEY(entry_id) REFERENCES journal_entries(id), FOREIGN KEY(account_id) REFERENCES accounts(id))");
       await db.execute("INSERT INTO accounts(code,name_ar,account_type) VALUES ('CASH','الصندوق','asset'),('AR','ذمم الزبائن','asset'),('INVENTORY','المخزون','asset'),('AP','ذمم الموردين','liability'),('SALES','إيرادات المبيعات','revenue'),('EXPENSE','المصروفات التشغيلية','expense'),('SALES_RETURNS','مرتجعات المبيعات','revenue'),('CAPITAL','رأس المال','equity'),('COGS','تكلفة البضاعة المباعة','expense')");
       await db.execute("CREATE TABLE audit_logs(id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER, details TEXT NOT NULL, created_at TEXT NOT NULL)");
+      await db.execute("CREATE TABLE business_profile(id INTEGER PRIMARY KEY CHECK(id=1), shop_name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '')");
+      await db.execute("INSERT INTO business_profile(id,shop_name) VALUES(1,'')");
     }, onUpgrade: (db, oldVersion, newVersion) async {
       if (oldVersion < 2) {
         await db.execute('ALTER TABLE stocktake_lines ADD COLUMN movement_sequence_snapshot INTEGER NOT NULL DEFAULT 0');
@@ -118,6 +120,10 @@ class AppDatabase {
         await db.execute("CREATE TABLE kitchen_stock_balances(product_id INTEGER PRIMARY KEY, quantity REAL NOT NULL DEFAULT 0 CHECK(quantity>=0), weighted_average_cost REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, FOREIGN KEY(product_id) REFERENCES products(id))");
         await db.execute("CREATE TABLE kitchen_stock_movements(id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, quantity_delta REAL NOT NULL CHECK(quantity_delta<>0), movement_type TEXT NOT NULL, source_type TEXT NOT NULL, source_id INTEGER, idempotency_key TEXT NOT NULL UNIQUE, actor_user_id INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, FOREIGN KEY(product_id) REFERENCES products(id), FOREIGN KEY(actor_user_id) REFERENCES users(id))");
         await db.execute('CREATE INDEX idx_kitchen_stock_movements_product_date ON kitchen_stock_movements(product_id,created_at)');
+      }
+      if (oldVersion < 16) {
+        await db.execute("CREATE TABLE IF NOT EXISTS business_profile(id INTEGER PRIMARY KEY CHECK(id=1), shop_name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '')");
+        await db.execute("INSERT OR IGNORE INTO business_profile(id,shop_name) VALUES(1,'')");
       }
       if (oldVersion < 15) {
         await db.execute("CREATE TABLE IF NOT EXISTS kitchen_stock_balances(product_id INTEGER PRIMARY KEY, quantity REAL NOT NULL DEFAULT 0 CHECK(quantity>=0), weighted_average_cost REAL NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, FOREIGN KEY(product_id) REFERENCES products(id))");
@@ -1266,6 +1272,18 @@ class AppDatabase {
       await tx.update('kitchen_orders',{'status':'cancelled','updated_at':now},where:'sale_id=?',whereArgs:[saleId]);
       await tx.insert('audit_logs',{'actor_user_id':actorUserId,'action':'sale_voided','entity_type':'sale','entity_id':saleId,'details':'Reason: '+reason.trim()+'; refunded='+paid.toString(),'created_at':now});
     });
+  }
+
+  Future<Map<String,Object?>> businessProfile() async {
+    final rows = await (await database).query('business_profile', where:'id=1', limit:1);
+    return rows.isEmpty ? {'shop_name':'','phone':'','address':''} : rows.first;
+  }
+
+  Future<void> saveBusinessProfile({required String shopName, String phone='', String address=''}) async {
+    final name = shopName.trim();
+    if (name.isEmpty) throw ArgumentError('اسم المحل مطلوب');
+    final db = await database;
+    await db.insert('business_profile', {'id':1,'shop_name':name,'phone':phone.trim(),'address':address.trim()}, conflictAlgorithm:ConflictAlgorithm.replace);
   }
 
 }
