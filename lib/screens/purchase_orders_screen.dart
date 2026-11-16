@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/app_database.dart';
+import '../data/inventory_service.dart';
 
 class PurchaseOrdersScreen extends StatefulWidget {
   final Map<String,Object?> user;
@@ -9,6 +10,8 @@ class PurchaseOrdersScreen extends StatefulWidget {
 
 class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
   List<Map<String,Object?>> suppliers=[],products=[],orders=[];
+  final unitOptions=<int,List<Map<String,Object?>>>{};
+  final selectedUnitIds=<int,int>{};
   final quantities=<int,TextEditingController>{};
   final invoice=TextEditingController();
   int? supplierId;
@@ -27,9 +30,16 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
       final a=await db.listSuppliers(actorUserId:actorId);
       final b=await db.purchaseableProducts(actorUserId:actorId,language:language);
       final c=await db.purchaseOrders(actorUserId:actorId);
-      for(final p in b){quantities.putIfAbsent(p['id'] as int,()=>TextEditingController());}
+      final database=await db.database;
+      final options=<int,List<Map<String,Object?>>>{};
+      for(final p in b){
+        final pid=p['id'] as int;
+        options[pid]=await InventoryService.productUnits(database,actorUserId:actorId,productId:pid,language:language,forPurchase:true);
+        quantities.putIfAbsent(pid,()=>TextEditingController());
+        selectedUnitIds.putIfAbsent(pid,()=>0);
+      }
       if(!mounted)return;
-      setState(() { suppliers=a; products=b; orders=c; });
+      setState(() { suppliers=a; products=b; orders=c; unitOptions.addAll(options); });
     }catch(e){if(mounted)message(e.toString());}
     finally{if(mounted)setState(()=>loading=false);}
   }
@@ -42,7 +52,12 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
       if(raw.isEmpty)continue;
       final q=double.tryParse(raw.replaceAll(',','.'));
       if(q==null||!q.isFinite||q<=0){message('كمية غير صحيحة للصنف '+p['name_ar'].toString());return;}
-      lines.add({'productId':p['id'],'quantity':q,'enteredQuantity':q,'enteredUnitName':p['base_unit'],'conversionToBase':1.0});
+      final pid=p['id'] as int;
+      try{
+        final factor=await InventoryService.toBaseQuantity(await AppDatabase.instance.database,actorUserId:actorId,productId:pid,quantity:q,unitId:selectedUnitIds[pid]??0,forPurchase:true);
+        final unit=(unitOptions[pid]??[]).firstWhere((u)=>(u['id'] as int)==(selectedUnitIds[pid]??0));
+        lines.add({'productId':pid,'quantity':factor,'enteredQuantity':q,'enteredUnitName':unit['unit_name'].toString(),'conversionToBase':(unit['conversion_to_base'] as num).toDouble()});
+      }catch(e){message(e.toString());return;}
     }
     if(lines.isEmpty){message('أدخل كمية لصنف واحد على الأقل');return;}
     setState(()=>busy=true);
@@ -110,9 +125,13 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
         Text('إنشاء طلب توريد جديد',style:Theme.of(context).textTheme.titleLarge),
         DropdownButtonFormField<int>(value:supplierId,decoration:const InputDecoration(labelText:'المورد'),items:[for(final s in suppliers)DropdownMenuItem(value:s['id'] as int,child:Text(s['name'].toString()))],onChanged:(v)=>setState(()=>supplierId=v)),
         const Padding(padding:EdgeInsets.symmetric(vertical:8),child:Text('اختر الأصناف من مركز الأصناف وأدخل الكمية المطلوبة بوحدة الأساس. لا يتغير المخزون عند إنشاء الطلب.')),
-        for(final p in products)Padding(padding:const EdgeInsets.symmetric(vertical:3),child:Row(children:[
-          Expanded(child:Text(p['name_ar'].toString()+' • '+p['base_unit'].toString())),
-          SizedBox(width:110,child:TextField(controller:quantities[p['id'] as int],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'الكمية المطلوبة'))),
+        for(final p in products)Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+          Text(p['name_ar'].toString()+' • وحدة الأساس: '+p['base_unit'].toString(),style:const TextStyle(fontWeight:FontWeight.w600)),
+          Row(children:[
+            Expanded(child:DropdownButtonFormField<int>(value:selectedUnitIds[p['id'] as int]??0,decoration:const InputDecoration(labelText:'وحدة الطلب'),items:[for(final u in unitOptions[p['id'] as int]??[])DropdownMenuItem(value:u['id'] as int,child:Text(u['unit_name'].toString()+' × '+u['conversion_to_base'].toString()+' '+p['base_unit'].toString()))],onChanged:(v)=>setState(()=>selectedUnitIds[p['id'] as int]=v??0))),
+            const SizedBox(width:8),
+            SizedBox(width:110,child:TextField(controller:quantities[p['id'] as int],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'الكمية المطلوبة'))),
+          ]),
         ])),
         FilledButton(onPressed:busy?null:createOrder,child:Text(busy?'جارٍ الحفظ':'حفظ طلب التوريد')),
       ]))),
