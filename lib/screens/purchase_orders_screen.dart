@@ -83,8 +83,8 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
         Text('المورد: '+order['supplier_name'].toString()),
         TextField(controller:invoice,decoration:const InputDecoration(labelText:'رقم فاتورة المورد')),
         for(final l in eligible)Padding(padding:const EdgeInsets.symmetric(vertical:6),child:Row(children:[
-          Expanded(child:Text(l['name_ar'].toString()+'\nالمتبقي: '+l['remaining_to_receive'].toString()+' '+l['base_unit'].toString())),
-          SizedBox(width:105,child:TextField(controller:received[l['id'] as int],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:'المستلم ('+l['base_unit'].toString()+')'))),
+          Expanded(child:Text(l['name_ar'].toString()+'\nالمتبقي: '+((l['remaining_to_receive'] as num).toDouble()/(l['conversion_to_base_snapshot'] as num).toDouble()).toString()+' '+l['entered_unit_name'].toString())),
+          SizedBox(width:105,child:TextField(controller:received[l['id'] as int],keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:'المستلم ('+l['entered_unit_name'].toString()+')'))),
         ])),
         const Text('أدخل الكمية التي وصلت فعلياً. يمكن ترك الصنف دون استلام، ويمكن استلام الطلب على دفعات.'),
       ]))),
