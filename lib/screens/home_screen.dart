@@ -39,6 +39,33 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => items = result);
   }
 
+  Future<void> configureShop() async {
+    final profile = await AppDatabase.instance.businessProfile();
+    final name = TextEditingController(text: (profile['shop_name'] ?? '').toString());
+    final phone = TextEditingController(text: (profile['phone'] ?? '').toString());
+    final address = TextEditingController(text: (profile['address'] ?? '').toString());
+    try {
+      final saved = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('بيانات المحل على الفواتير'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller:name, decoration:const InputDecoration(labelText:'اسم المحل *')),
+          TextField(controller:phone, keyboardType:TextInputType.phone, decoration:const InputDecoration(labelText:'رقم الهاتف')),
+          TextField(controller:address, decoration:const InputDecoration(labelText:'العنوان')),
+        ])),
+        actions: [
+          TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('إلغاء')),
+          FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('حفظ')),
+        ],
+      ));
+      if(saved==true) {
+        await AppDatabase.instance.saveBusinessProfile(shopName:name.text,phone:phone.text,address:address.text);
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم حفظ بيانات المحل، وستظهر في الفواتير الجديدة والمستندات المطبوعة.')));
+      }
+    } catch(e) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString())));
+    } finally { name.dispose(); phone.dispose(); address.dispose(); }
+  }
+
   Future<void> addProduct() async {
     final n = TextEditingController();
     final u = TextEditingController(text: 'حبة');
@@ -176,6 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (admin || storekeeper || widget.user['role'] == 'cashier' || kitchenUser) FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => KitchenScreen(user: widget.user))), icon: const Icon(Icons.soup_kitchen), label: const Text('شاشة المطبخ')),
         if (admin) FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CashScreen(user: widget.user))).then((_) => load()), icon: const Icon(Icons.account_balance_wallet), label: const Text('الصندوق والحسابات النقدية')),
         if (admin) FilledButton.tonalIcon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EmployeeManagementScreen(user: widget.user))), icon: const Icon(Icons.manage_accounts), label: const Text('إدارة الموظفين')),
+        if (admin) OutlinedButton.icon(onPressed: configureShop, icon: const Icon(Icons.store), label: const Text('بيانات المحل والفواتير')),
         if (admin || storekeeper) OutlinedButton.icon(onPressed: stocktake, icon: const Icon(Icons.fact_check), label: const Text('جرد فعلي')),
         if (admin) FilledButton.tonalIcon(onPressed: reviewStocktake, icon: const Icon(Icons.verified), label: const Text('مراجعة الجرد')),
       ]),
