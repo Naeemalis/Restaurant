@@ -75,7 +75,7 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
     final lines=await AppDatabase.instance.purchaseOrderLines(actorUserId:actorId,orderId:id,language:language);
     final eligible=lines.where((l)=>(l['remaining_to_receive'] as num).toDouble()>0.000001).toList();
     if(eligible.isEmpty){message('لا توجد كميات متبقية للاستلام');return;}
-    final received={for(final l in eligible)l['id'] as int:TextEditingController(text:(l['remaining_to_receive'] as num).toString())};
+    final received={for(final l in eligible)l['id'] as int:TextEditingController(text:((l['remaining_to_receive'] as num).toDouble()/(l['conversion_to_base_snapshot'] as num).toDouble()).toString())};
     invoice.clear();
     final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
       title:Text('استلام طلب '+order['document_no'].toString()),
@@ -100,7 +100,8 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
           final q=double.tryParse(raw.replaceAll(',','.'));
           if(q==null||!q.isFinite||q<=0){message('كمية استلام غير صحيحة');return;}
           final productId=l['product_id'] as int;
-          receiptLines.add({'productId':productId,'quantity':q,'enteredQuantity':q,'enteredUnitName':l['base_unit'],'conversionToBase':1.0});
+          final factor=(l['conversion_to_base_snapshot'] as num).toDouble();
+          receiptLines.add({'productId':productId,'quantity':q*factor,'enteredQuantity':q,'enteredUnitName':l['entered_unit_name'],'conversionToBase':factor});
           orderLineIds[productId]=l['id'] as int;
         }
         if(receiptLines.isEmpty){message('أدخل كمية مستلمة واحدة على الأقل');}
