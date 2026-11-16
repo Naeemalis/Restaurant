@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/app_database.dart';
 import '../data/inventory_service.dart';
 import '../services/document_service.dart';
+import 'purchase_orders_screen.dart';
 
 class PurchaseScreen extends StatefulWidget {
   final Map<String,Object?> user;
@@ -93,7 +94,7 @@ class _PurchaseScreenState extends State<PurchaseScreen>{
     reason.dispose();
   }
   @override void dispose(){invoice.dispose();for(final c in qty.values){c.dispose();}super.dispose();}
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('كاشير التوريد')),body:loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(12),children:[
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('كاشير التوريد'),actions:[IconButton(tooltip:'طلبات التوريد',icon:const Icon(Icons.playlist_add),onPressed:(){Navigator.push(context,MaterialPageRoute(builder:(_)=>PurchaseOrdersScreen(user:widget.user))).then((_)=>load());})]),body:loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(12),children:[
     Card(child:Padding(padding:const EdgeInsets.all(12),child:Column(children:[
       Text('تسجيل استلام المورد',style:Theme.of(context).textTheme.titleLarge),
       DropdownButtonFormField<int>(value:supplierId,decoration:const InputDecoration(labelText:'المورد'),items:[for(final s in suppliers)DropdownMenuItem(value:s['id'] as int,child:Text(s['name'].toString()))],onChanged:(v)=>setState(()=>supplierId=v)),
