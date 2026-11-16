@@ -95,12 +95,20 @@ class _CashierScreenState extends State<CashierScreen>{
       )),
       const Divider(height:1),
       SizedBox(height:112,child:Column(children:[
-        Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:2),child:Row(children:[
-          const Text('السلة',style:TextStyle(fontWeight:FontWeight.bold)),
-          const Spacer(),
-          Text(selectedProductId==null?'اختر صنفاً ثم أدخل الكمية':(cart[selectedProductId]?['name'].toString()??'')),
+        Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),child:Row(children:[
+          Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,mainAxisSize:MainAxisSize.min,children:[
+            const Text('السلة',style:TextStyle(fontWeight:FontWeight.bold)),
+            Text(selectedProductId==null?'اختر صنفاً ثم أدخل الكمية':(cart[selectedProductId]?['name'].toString()??''),maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11)),
+          ])),
           const SizedBox(width:8),
-          Text(keypadBuffer.isEmpty?'':keypadBuffer,style:const TextStyle(fontWeight:FontWeight.bold,fontSize:17)),
+          Container(
+            width:116,
+            constraints:const BoxConstraints(minHeight:38),
+            alignment:Alignment.center,
+            padding:const EdgeInsets.symmetric(horizontal:8,vertical:4),
+            decoration:BoxDecoration(color:Theme.of(context).colorScheme.surfaceContainerHighest,borderRadius:BorderRadius.circular(8),border:Border.all(color:Theme.of(context).colorScheme.outline)),
+            child:Text(keypadBuffer.isEmpty?'0':keypadBuffer,textDirection:TextDirection.ltr,maxLines:1,overflow:TextOverflow.visible,textAlign:TextAlign.center,style:const TextStyle(fontWeight:FontWeight.bold,fontSize:22)),
+          ),
         ])),
         Expanded(child:cart.isEmpty?const Center(child:Text('اختر المنتجات من الشبكة أعلاه')):ListView(
           scrollDirection:Axis.horizontal,
