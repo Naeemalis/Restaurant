@@ -1,0 +1,23 @@
+name: naeemsoft_restaurant
+description: Local-first Android restaurant management system.
+publish_to: "none"
+version: 0.1.1+2
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  sqflite: ^2.4.2
+  path: ^1.9.1
+  crypto: ^3.0.6
+  printing: ^5.15.1
+  flutter_native_html_to_pdf: ^3.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: ^2.3.5
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true
