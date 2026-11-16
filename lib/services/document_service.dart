@@ -9,7 +9,7 @@ class DocumentService {
       .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
       .replaceAll('"','&quot;').replaceAll("'","&#39;");
 
-  static String _page(String title,String body,{String language='ar'}) {
+  static String _page(String title,String body,{String language='ar',String shopName='اسم المحل',String phone='',String address=''}) {
     final isArabic=language=='ar';
     final direction=isArabic?'rtl':'ltr';
     final footer=isArabic
@@ -25,13 +25,14 @@ h1{text-align:center;font-size:21px;margin:0 0 8px}h2{font-size:15px;margin:14px
 .meta{display:flex;justify-content:space-between;gap:12px;margin:12px 0}
 table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #777;padding:6px;text-align:start}
 th{background:#eee}.totals{width:55%;margin-inline-start:auto;margin-top:14px}.muted{color:#555;font-size:10px}
-</style></head><body><h1>NaeemSoft Restaurant</h1><h2 style="text-align:center">${_e(title)}</h2>$body
+</style></head><body><h1>${_e(shopName.isEmpty ? "اسم المحل" : shopName)}</h1><p style="text-align:center;margin:0">${_e(phone)} ${_e(address)}</p><h2 style="text-align:center">${_e(title)}</h2>$body
 <p class="muted">${_e(footer)}</p>
 </body></html>''';
   }
 
   static Future<String> _saleHtml(int saleId) async {
     final db=await AppDatabase.instance.database;
+    final profile=await AppDatabase.instance.businessProfile();
     final head=await db.rawQuery("SELECT s.*,c.name AS customer_name,u.display_name AS cashier_name FROM sales s LEFT JOIN customers c ON c.id=s.customer_id LEFT JOIN users u ON u.id=s.cashier_user_id WHERE s.id=?",[saleId]);
     if(head.isEmpty)throw StateError('الفاتورة غير موجودة');
     final s=head.first;
@@ -42,7 +43,7 @@ th{background:#eee}.totals{width:55%;margin-inline-start:auto;margin-top:14px}.m
 <div>الزبون: ${_e(s['customer_name']??'زبون نقدي')}<br>الكاشير: ${_e(s['cashier_name'])}</div></div>
 <table><thead><tr><th>الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>$rows</tbody></table>
 <table class="totals"><tr><th>الإجمالي قبل الخصم</th><td>${_e(s['subtotal'])}</td></tr><tr><th>الخصم</th><td>${_e(s['discount'])}</td></tr><tr><th>الصافي</th><td><b>${_e(s['total'])}</b></td></tr><tr><th>المدفوع</th><td>${_e(s['paid'])}</td></tr><tr><th>المتبقي</th><td>${_e(s['balance'])}</td></tr></table>''';
-    return _page('فاتورة مبيعات',body);
+    return _page('فاتورة مبيعات',body,shopName:(profile['shop_name']??'').toString(),phone:(profile['phone']??'').toString(),address:(profile['address']??'').toString());
   }
 
   static Future<String> _stockHtml() async {
@@ -93,6 +94,7 @@ th{background:#eee}.totals{width:55%;margin-inline-start:auto;margin-top:14px}.m
 
   static Future<String> _inventoryHtml(String type,int id,String language) async {
     final db=await AppDatabase.instance.database;
+    final profile=await AppDatabase.instance.businessProfile();
     String title='';
     Map<String,Object?> head={};
     List<Map<String,Object?>> rows=[];
@@ -132,7 +134,7 @@ th{background:#eee}.totals{width:55%;margin-inline-start:auto;margin-top:14px}.m
     final trs=rows.map((r)=>'<tr><td>${_e(r['name_ar'])}</td><td>${_e(r['quantity'])}</td><td>${_e(r['unit'])}</td><td>${_e(r['detail'])}</td></tr>').join();
     final statusValue=_docText((head['status']??head['condition_code']??'').toString(),language);
     final body='<div class="meta"><div>${_docText('رقم المستند:',language)} <b>${_e(head['document_no']??id)}</b><br>${_docText('التاريخ:',language)} ${_e(head['created_at']??head['requested_at']??'')}</div><div>${_docText('الحالة:',language)} ${_e(statusValue)}<br>${_docText('الجهة / المورد:',language)} ${_e(head['destination']??head['supplier_name']??'')}</div></div><p>${_docText('السبب / الملاحظة:',language)} ${_e(head['reason']??head['review_note']??'')}</p><table><thead><tr>$columns</tr></thead><tbody>$trs</tbody></table><p>${_docText('اعتماد / استلام:',language)} ____________________</p>';
-    return _page(_docText(title,language),body,language:language);
+    return _page(_docText(title,language),body,language:language,shopName:(profile['shop_name']??'').toString(),phone:(profile['phone']??'').toString(),address:(profile['address']??'').toString());
   }
 
   static Future<String> _inventoryMovementHtml(String language) async {
