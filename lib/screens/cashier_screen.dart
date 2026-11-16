@@ -63,7 +63,7 @@ class _CashierScreenState extends State<CashierScreen>{
     finally{if(mounted)setState(()=>busy=false);}
   }
   Widget keypadButton(String label,{bool primary=false})=>FilledButton.tonal(
-    style:FilledButton.styleFrom(padding:EdgeInsets.zero,minimumSize:const Size(0,32),visualDensity:VisualDensity.compact),
+    style:FilledButton.styleFrom(padding:EdgeInsets.zero,minimumSize:const Size(0,26),visualDensity:VisualDensity.compact),
     onPressed:()=>key(label),
     child:Text(label,style:TextStyle(fontSize:primary?13:16,fontWeight:FontWeight.w600)),
   );
@@ -120,8 +120,8 @@ class _CashierScreenState extends State<CashierScreen>{
           ],
         )),
       ])),
-      SizedBox(height:116,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),child:GridView.count(
-        physics:const NeverScrollableScrollPhysics(),crossAxisCount:4,mainAxisSpacing:3,crossAxisSpacing:4,childAspectRatio:2.15,
+      SizedBox(height:132,child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:3),child:GridView.count(
+        physics:const NeverScrollableScrollPhysics(),crossAxisCount:4,mainAxisSpacing:3,crossAxisSpacing:4,childAspectRatio:2.7,
         children:[keypadButton('7'),keypadButton('8'),keypadButton('9'),keypadButton('⌫'),
           keypadButton('4'),keypadButton('5'),keypadButton('6'),keypadButton('مسح',primary:true),
           keypadButton('1'),keypadButton('2'),keypadButton('3'),keypadButton('✓',primary:true),
