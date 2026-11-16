@@ -203,6 +203,52 @@ class InventorySchema {
         await tx.insert('inventory_schema_migrations', {'version':8,'applied_at':DateTime.now().toUtc().toIso8601String()});
       }
 
+
+      final v9 = await tx.query('inventory_schema_migrations', columns:['version'], where:'version=9', limit:1);
+      if (v9.isEmpty) {
+        await tx.execute("""
+          CREATE TABLE purchase_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_no TEXT NOT NULL UNIQUE,
+            supplier_id INTEGER NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('submitted','partially_received','received','cancelled')),
+            notes TEXT NOT NULL DEFAULT '',
+            created_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(supplier_id) REFERENCES suppliers(id),
+            FOREIGN KEY(created_by) REFERENCES users(id)
+          )
+        """);
+        await tx.execute("""
+          CREATE TABLE purchase_order_lines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            ordered_qty REAL NOT NULL CHECK(ordered_qty>0),
+            received_qty REAL NOT NULL DEFAULT 0 CHECK(received_qty>=0),
+            entered_qty REAL NOT NULL,
+            entered_unit_name TEXT NOT NULL,
+            conversion_to_base_snapshot REAL NOT NULL CHECK(conversion_to_base_snapshot>0),
+            unit_snapshot TEXT NOT NULL,
+            FOREIGN KEY(order_id) REFERENCES purchase_orders(id),
+            FOREIGN KEY(product_id) REFERENCES products(id),
+            UNIQUE(order_id,product_id)
+          )
+        """);
+        final receiptColumns = await tx.rawQuery('PRAGMA table_info(purchase_receipts)');
+        if (!receiptColumns.any((c)=>c['name']=='purchase_order_id')) {
+          await tx.execute('ALTER TABLE purchase_receipts ADD COLUMN purchase_order_id INTEGER');
+        }
+        final receiptLineColumns = await tx.rawQuery('PRAGMA table_info(purchase_receipt_lines)');
+        if (!receiptLineColumns.any((c)=>c['name']=='purchase_order_line_id')) {
+          await tx.execute('ALTER TABLE purchase_receipt_lines ADD COLUMN purchase_order_line_id INTEGER');
+        }
+        await tx.execute('CREATE INDEX idx_purchase_orders_supplier_status ON purchase_orders(supplier_id,status,created_at)');
+        await tx.execute('CREATE INDEX idx_purchase_order_lines_order ON purchase_order_lines(order_id)');
+        await tx.insert('inventory_schema_migrations', {'version':9,'applied_at':DateTime.now().toUtc().toIso8601String()});
+      }
+
     });
   }
 }
