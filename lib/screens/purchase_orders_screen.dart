@@ -29,7 +29,7 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen>{
       final c=await db.purchaseOrders(actorUserId:actorId);
       for(final p in b){quantities.putIfAbsent(p['id'] as int,()=>TextEditingController());}
       if(!mounted)return;
-      setState(()=>{suppliers=a,products=b,orders=c});
+      setState(() { suppliers=a; products=b; orders=c; });
     }catch(e){if(mounted)message(e.toString());}
     finally{if(mounted)setState(()=>loading=false);}
   }
