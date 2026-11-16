@@ -152,7 +152,6 @@ class InventoryService {
             final transferCost=(mainRows.first['weighted_average_cost'] as num).toDouble();
             final changed = await tx.rawUpdate('UPDATE stock_balances SET on_hand=on_hand-?,approved_qty=approved_qty-?,updated_at=? WHERE product_id=? AND approved_qty>=? AND on_hand>=?', [qty, qty, now, pid, qty, qty]);
             if (changed != 1) throw StateError('الرصيد الرئيسي المعتمد غير كافٍ للتسليم للمطبخ');
-            final kitchenRows=await tx.query('kitchen_stock_balances',where:'product_id=?',whereArgs:[pid],limit:1);
             await tx.rawInsert('INSERT INTO kitchen_stock_balances(product_id,quantity,weighted_average_cost,updated_at) VALUES(?,?,?,?) ON CONFLICT(product_id) DO UPDATE SET quantity=quantity+excluded.quantity,weighted_average_cost=CASE WHEN quantity+excluded.quantity<=0 THEN 0 ELSE ((quantity*weighted_average_cost)+(excluded.quantity*excluded.weighted_average_cost))/(quantity+excluded.quantity) END,updated_at=excluded.updated_at',[pid,qty,transferCost,now]);
             await tx.insert('kitchen_stock_movements', {'product_id':pid,'quantity_delta':qty,'movement_type':'handover_in','source_type':'stock_issue','source_id':requestId,'idempotency_key':'kitchen-handover:$requestId:$lid:$already','actor_user_id':actorUserId,'note':'تسليم من المخزن الرئيسي: '+qty.toString(),'created_at':now});
           } else {
