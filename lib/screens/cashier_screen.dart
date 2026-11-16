@@ -31,12 +31,11 @@ class _CashierScreenState extends State<CashierScreen>{
       final old=cart[id];
       if(old==null){cart[id]={'productId':id,'name':p['name_ar'],'unit':p['base_unit'],'quantity':1.0,'unitPrice':(p['sale_price'] as num).toDouble()};}
       else{old['quantity']=(old['quantity'] as double)+1;}
-      selectedProductId=id;keypadBuffer='';
+      selectedProductId=id;
     });
   }
   void key(String value){
     if(selectedProductId==null && cart.isNotEmpty)selectedProductId=cart.keys.last;
-    if(selectedProductId==null)return;
     setState((){
       if(value=='⌫'){if(keypadBuffer.isNotEmpty)keypadBuffer=keypadBuffer.substring(0,keypadBuffer.length-1);}
       else if(value=='مسح'){keypadBuffer='';}
