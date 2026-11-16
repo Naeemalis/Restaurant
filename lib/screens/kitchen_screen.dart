@@ -183,7 +183,7 @@ class _KitchenScreenState extends State<KitchenScreen>{
           if(status=='preparing')Padding(padding:const EdgeInsets.all(8),child:FilledButton(onPressed:()=>change(id,'ready'),child:Text(tr('تحديد الطلب جاهز')))),
           if((widget.user['role']=='admin'||widget.user['role']=='cashier')&&status=='new')Padding(padding:const EdgeInsets.all(8),child:OutlinedButton.icon(onPressed:()=>cancel(o),icon:const Icon(Icons.cancel_outlined),label:Text(tr('إلغاء الطلب قبل بدء التحضير')))),
         ],
-      );
+      ));
       }).toList(),
     ]),
   );

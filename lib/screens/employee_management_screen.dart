@@ -66,7 +66,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
               DropdownButtonFormField<String>(
                 value: role,
                 decoration: const InputDecoration(labelText: 'الدور'),
-                items: const [
+                items: [
                   DropdownMenuItem(value: 'admin', child: Text('مدير')),
                   DropdownMenuItem(value: 'cashier', child: Text('كاشير')),
                   DropdownMenuItem(value: 'storekeeper', child: Text('أمين مخزن')),

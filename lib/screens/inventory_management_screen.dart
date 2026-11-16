@@ -203,7 +203,6 @@ class _InventoryManagementScreenState extends State<InventoryManagementScreen> {
       "اسم الجهة / المطبخ":{'en':"Department / Kitchen",'fr':"Service / Cuisine"},
       "نوع الحركة":{'en':"Movement type",'fr':"Type de mouvement"},
       "صرف استهلاكي - يخصم من المخزون":{'en':"Consumption issue - deducted from stock",'fr':"Sortie de consommation - déduite du stock"},
-      "تحويل إلى عهدة المطبخ - ينقص المخزن الرئيسي ويزيد رصيد المطبخ":{'en':"Internal kitchen handover - deducted when recipe is consumed",'fr':"Transfert interne à la cuisine - déduit lors de la consommation de la recette"},
       "اسم المستلم":{'en':"Receiver name",'fr':"Nom du réceptionnaire"},
       "سبب الصرف":{'en':"Issue reason",'fr':"Motif de sortie"},
       "إرسال الطلب":{'en':"Submit request",'fr':"Envoyer la demande"},
