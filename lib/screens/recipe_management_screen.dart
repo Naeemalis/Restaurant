@@ -15,6 +15,17 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen>{
   @override void initState(){super.initState();load();}
   void message(String value)=>ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(value)));
 
+  // Recipe quantities are entered in kitchen-friendly units, then normalized
+  // to the ingredient's inventory base unit before they are saved.
+  ({String unit,double factor}) recipeUnit(String raw){
+    final u=raw.trim().toLowerCase();
+    if(['kg','كيلو','كيلوجرام','كيلوغرام','كجم'].contains(u))return (unit:'جرام',factor:0.001);
+    if(['g','gram','grams','جرام','غرام'].contains(u))return (unit:'جرام',factor:1);
+    if(['l','liter','litre','لتر'].contains(u))return (unit:'ملليلتر',factor:0.001);
+    if(['ml','milliliter','millilitre','مل','ملليلتر','مليلتر'].contains(u))return (unit:'ملليلتر',factor:1);
+    return (unit:raw,factor:1);
+  }
+
   Future<void> load()async{
     if(mounted)setState(()=>loading=true);
     try{
@@ -77,8 +88,9 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen>{
     final lines=<Map<String,Object?>>[for(final l in existing){
       'productId':l['ingredient_product_id'],
       'name':l['name_ar'],
-      'unit':l['unit_snapshot'],
-      'quantity':(l['quantity_per_meal'] as num).toDouble(),
+      'unit':recipeUnit(l['unit_snapshot'].toString()).unit,
+      'quantity':(l['quantity_per_meal'] as num).toDouble()/recipeUnit(l['unit_snapshot'].toString()).factor,
+      'baseQuantity':(l['quantity_per_meal'] as num).toDouble(),
     }];
     int? selectedIngredientId;
     final qty=TextEditingController();
@@ -88,18 +100,19 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen>{
         DropdownButtonFormField<int>(
           value:selectedIngredientId,
           decoration:const InputDecoration(labelText:'اختر مكوناً من المخزون'),
-          items:[for(final p in ingredients)DropdownMenuItem(value:p['id'] as int,child:Text(p['name_ar'].toString()+' ('+p['base_unit'].toString()+')'))],
+          items:[for(final p in ingredients)DropdownMenuItem(value:p['id'] as int,child:Text(p['name_ar'].toString()+' ('+recipeUnit(p['base_unit'].toString()).unit+')'))],
           onChanged:(v)=>setDialogState(()=>selectedIngredientId=v),
         ),
         Row(children:[
-          Expanded(child:TextField(controller:qty,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:const InputDecoration(labelText:'الكمية اللازمة لوجبة واحدة'))),
+          Expanded(child:TextField(controller:qty,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:selectedIngredientId==null?'الكمية لكل وجبة': 'الكمية لكل وجبة ('+recipeUnit(ingredients.firstWhere((x)=>x['id']==selectedIngredientId)['base_unit'].toString()).unit+')'))),
           IconButton(onPressed:(){
             if(selectedIngredientId==null){message('اختر المكون');return;}
             final amount=double.tryParse(qty.text.replaceAll(',','.'));
             if(amount==null||!amount.isFinite||amount<=0){message('أدخل كمية صحيحة أكبر من صفر');return;}
             if(lines.any((l)=>l['productId']==selectedIngredientId)){message('المكون مضاف بالفعل');return;}
             final p=ingredients.firstWhere((x)=>x['id']==selectedIngredientId);
-            setDialogState(()=>lines.add({'productId':selectedIngredientId,'name':p['name_ar'],'unit':p['base_unit'],'quantity':amount}));
+            final conversion=recipeUnit(p['base_unit'].toString());
+            setDialogState(()=>lines.add({'productId':selectedIngredientId,'name':p['name_ar'],'unit':conversion.unit,'quantity':amount,'baseQuantity':amount*conversion.factor}));
             qty.clear();
           },icon:const Icon(Icons.add_circle),tooltip:'إضافة المكون'),
         ]),
@@ -119,7 +132,7 @@ class _RecipeManagementScreenState extends State<RecipeManagementScreen>{
         FilledButton(onPressed:()async{
           if(lines.isEmpty){message('أضف مكوناً واحداً على الأقل');return;}
           try{
-            await AppDatabase.instance.saveRecipe(actorUserId:actorId,productId:mealId,lines:[for(final l in lines){'productId':l['productId'],'quantity':l['quantity']}]);
+            await AppDatabase.instance.saveRecipe(actorUserId:actorId,productId:mealId,lines:[for(final l in lines){'productId':l['productId'],'quantity':l['baseQuantity']}]);
             if(dialogContext.mounted)Navigator.pop(dialogContext);
             if(mounted)message('تم حفظ وصفة الوجبة وكميات مكوناتها. ستُخصم تلقائياً عند إصدار فاتورة الوجبة.');
           }catch(e){if(mounted)message(e.toString());}
