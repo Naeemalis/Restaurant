@@ -34,7 +34,8 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Run tests
-        run: flutter test
+        # Database tests share the singleton SQLite file; serialize test files to prevent cross-worker DB deletion/writes.
+        run: flutter test --concurrency=1
       - name: Build release APK
         run: flutter build apk --release
       - name: Upload APK
