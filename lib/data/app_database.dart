@@ -722,7 +722,61 @@ class AppDatabase {
     if(a.isEmpty || a.first['is_active']!=1 || !['admin','storekeeper'].contains(a.first['role'])) throw StateError('ليس لديك صلاحية التوريد');
     return db.rawQuery("SELECT p.id,COALESCE((SELECT t.name FROM product_translations t WHERE t.product_id=p.id AND t.language_code=?),(SELECT ta.name FROM product_translations ta WHERE ta.product_id=p.id AND ta.language_code='ar'),p.name_ar) AS name_ar,p.base_unit,COALESCE(b.on_hand,0) AS on_hand FROM products p LEFT JOIN stock_balances b ON b.product_id=p.id WHERE p.is_active=1 AND p.is_stock_item=1 ORDER BY name_ar",[language]);
   }
-  Future<int> submitPurchaseReceipt({required int actorUserId,required int supplierId,required String invoiceNo,required List<Map<String,Object?>> lines}) async {
+  Future<int> createPurchaseOrder({required int actorUserId,required int supplierId,required String notes,required List<Map<String,Object?>> lines}) async {
+    if(lines.isEmpty) throw ArgumentError('أضف صنفاً واحداً على الأقل إلى طلب التوريد');
+    final db=await database;
+    return db.transaction((tx) async {
+      final actor=await tx.query('users',columns:['role','is_active'],where:'id=?',whereArgs:[actorUserId],limit:1);
+      if(actor.isEmpty||actor.first['is_active']!=1||!['admin','storekeeper'].contains(actor.first['role'])) throw StateError('ليس لديك صلاحية إنشاء طلب توريد');
+      final supplier=await tx.query('suppliers',columns:['id'],where:'id=? AND is_active=1',whereArgs:[supplierId],limit:1);
+      if(supplier.isEmpty) throw StateError('المورد غير موجود أو متوقف');
+      final now=DateTime.now().toUtc().toIso8601String();
+      final documentNo='PO-'+DateTime.now().microsecondsSinceEpoch.toString();
+      final orderId=await tx.insert('purchase_orders',{'document_no':documentNo,'supplier_id':supplierId,'status':'submitted','notes':notes.trim(),'created_by':actorUserId,'created_at':now,'updated_at':now});
+      final seen=<int>{};
+      for(final line in lines){
+        final pid=line['productId'] as int;
+        final qty=(line['quantity'] as num).toDouble();
+        final entered=(line['enteredQuantity'] as num).toDouble();
+        final factor=(line['conversionToBase'] as num).toDouble();
+        if(!seen.add(pid)||!qty.isFinite||qty<=0||!entered.isFinite||entered<=0||!factor.isFinite||factor<=0||(entered*factor-qty).abs()>0.000001) throw ArgumentError('بيانات صنف أو وحدة طلب التوريد غير صحيحة أو مكررة');
+        final product=await tx.query('products',columns:['base_unit'],where:'id=? AND is_active=1 AND is_stock_item=1',whereArgs:[pid],limit:1);
+        if(product.isEmpty) throw StateError('أحد أصناف الطلب غير صالح');
+        await tx.insert('purchase_order_lines',{'order_id':orderId,'product_id':pid,'ordered_qty':qty,'received_qty':0,'entered_qty':entered,'entered_unit_name':(line['enteredUnitName']??'').toString(),'conversion_to_base_snapshot':factor,'unit_snapshot':product.first['base_unit']});
+      }
+      await tx.insert('audit_logs',{'actor_user_id':actorUserId,'action':'purchase_order_created','entity_type':'purchase_order','entity_id':orderId,'details':'Created supplier purchase order '+documentNo,'created_at':now});
+      return orderId;
+    });
+  }
+
+  Future<List<Map<String,Object?>>> purchaseOrders({required int actorUserId}) async {
+    final db=await database;
+    final actor=await db.query('users',columns:['role','is_active'],where:'id=?',whereArgs:[actorUserId],limit:1);
+    if(actor.isEmpty||actor.first['is_active']!=1||!['admin','storekeeper'].contains(actor.first['role'])) throw StateError('ليس لديك صلاحية عرض طلبات التوريد');
+    return db.rawQuery("""
+      SELECT o.*,s.name AS supplier_name,
+      (SELECT COUNT(*) FROM purchase_order_lines l WHERE l.order_id=o.id) AS line_count,
+      (SELECT COALESCE(SUM(ordered_qty),0) FROM purchase_order_lines l WHERE l.order_id=o.id) AS ordered_total,
+      (SELECT COALESCE(SUM(received_qty),0) FROM purchase_order_lines l WHERE l.order_id=o.id) AS received_total
+      FROM purchase_orders o JOIN suppliers s ON s.id=o.supplier_id
+      WHERE o.status IN ('submitted','partially_received')
+      ORDER BY o.id DESC
+    """);
+  }
+
+  Future<List<Map<String,Object?>>> purchaseOrderLines({required int actorUserId,required int orderId,String language='ar'}) async {
+    final db=await database;
+    final actor=await db.query('users',columns:['role','is_active'],where:'id=?',whereArgs:[actorUserId],limit:1);
+    if(actor.isEmpty||actor.first['is_active']!=1||!['admin','storekeeper'].contains(actor.first['role'])) throw StateError('ليس لديك صلاحية عرض تفاصيل طلب التوريد');
+    return db.rawQuery("""
+      SELECT l.*,COALESCE((SELECT t.name FROM product_translations t WHERE t.product_id=p.id AND t.language_code=?),p.name_ar) AS name_ar,p.base_unit,
+      (l.ordered_qty-l.received_qty-COALESCE((SELECT SUM(rl.received_qty) FROM purchase_receipt_lines rl JOIN purchase_receipts rr ON rr.id=rl.receipt_id WHERE rl.purchase_order_line_id=l.id AND rr.status='submitted'),0)) AS remaining_to_receive
+      FROM purchase_order_lines l JOIN products p ON p.id=l.product_id
+      WHERE l.order_id=? ORDER BY l.id
+    """,[language,orderId]);
+  }
+
+  Future<int> submitPurchaseReceipt({required int actorUserId,required int supplierId,required String invoiceNo,required List<Map<String,Object?>> lines,int? purchaseOrderId,Map<int,int>? orderLineIds}) async {
     if(invoiceNo.trim().isEmpty || lines.isEmpty) throw ArgumentError('رقم فاتورة المورد والأصناف مطلوبان');
     final db=await database;
     return db.transaction((tx) async {
@@ -730,8 +784,15 @@ class AppDatabase {
       if(actor.isEmpty || actor.first['is_active']!=1 || !['admin','storekeeper'].contains(actor.first['role'])) throw StateError('ليس لديك صلاحية تسجيل الاستلام');
       final supplier=await tx.query('suppliers',columns:['id'],where:'id=? AND is_active=1',whereArgs:[supplierId],limit:1);
       if(supplier.isEmpty) throw StateError('المورد غير موجود أو متوقف');
+      Map<int,Map<String,Object?>> orderLineMap={};
+      if(purchaseOrderId!=null){
+        final orders=await tx.query('purchase_orders',where:"id=? AND supplier_id=? AND status IN ('submitted','partially_received')",whereArgs:[purchaseOrderId,supplierId],limit:1);
+        if(orders.isEmpty) throw StateError('طلب التوريد غير موجود أو مغلق أو لا يتبع هذا المورد');
+        final ol=await tx.query('purchase_order_lines',where:'order_id=?',whereArgs:[purchaseOrderId]);
+        orderLineMap={for(final x in ol)x['id'] as int:x};
+      }
       final now=DateTime.now().toUtc().toIso8601String();
-      final rid=await tx.insert('purchase_receipts',{'invoice_no':invoiceNo.trim(),'supplier_id':supplierId,'status':'submitted','created_by':actorUserId,'created_at':now});
+      final rid=await tx.insert('purchase_receipts',{'invoice_no':invoiceNo.trim(),'supplier_id':supplierId,'purchase_order_id':purchaseOrderId,'status':'submitted','created_by':actorUserId,'created_at':now});
       for(final line in lines){
         final pid=line['productId'] as int; final qty=(line['quantity'] as num).toDouble();
         final enteredQty=(line['enteredQuantity'] as num?)?.toDouble()??qty;
@@ -740,7 +801,18 @@ class AppDatabase {
         if(!qty.isFinite || qty<=0 || !enteredQty.isFinite || enteredQty<=0 || !conversion.isFinite || conversion<=0 || (enteredQty*conversion-qty).abs()>0.000001) throw ArgumentError('كمية الاستلام أو معامل التحويل غير صحيح');
         final product=await tx.query('products',columns:['id'],where:'id=? AND is_active=1 AND is_stock_item=1',whereArgs:[pid],limit:1);
         if(product.isEmpty) throw StateError('أحد أصناف الاستلام غير صالح');
-        final receiptLineId=await tx.insert('purchase_receipt_lines',{'receipt_id':rid,'product_id':pid,'received_qty':qty,'unit_cost':0,'line_total':0,'entered_qty':enteredQty,'entered_unit_name':enteredUnit,'conversion_to_base_snapshot':conversion});
+        int? orderLineId;
+        if(purchaseOrderId!=null){
+          orderLineId=orderLineIds?[pid];
+          final orderLine=orderLineId==null?null:orderLineMap[orderLineId];
+          if(orderLine==null||orderLine['product_id']!=pid) throw StateError('الصنف غير مرتبط بطلب التوريد المحدد');
+          final ordered=(orderLine['ordered_qty'] as num).toDouble();
+          final received=(orderLine['received_qty'] as num).toDouble();
+          final pending=await tx.rawQuery("SELECT COALESCE(SUM(rl.received_qty),0) AS qty FROM purchase_receipt_lines rl JOIN purchase_receipts rr ON rr.id=rl.receipt_id WHERE rl.purchase_order_line_id=? AND rr.status='submitted'",[orderLineId]);
+          final pendingQty=(pending.first['qty'] as num).toDouble();
+          if(qty>ordered-received-pendingQty+0.000001) throw StateError('الكمية المستلمة تتجاوز الكمية المتبقية في طلب التوريد للصنف');
+        }
+        final receiptLineId=await tx.insert('purchase_receipt_lines',{'receipt_id':rid,'purchase_order_line_id':orderLineId,'product_id':pid,'received_qty':qty,'unit_cost':0,'line_total':0,'entered_qty':enteredQty,'entered_unit_name':enteredUnit,'conversion_to_base_snapshot':conversion});
         final balanceRows=await tx.query('stock_balances',where:'product_id=?',whereArgs:[pid],limit:1);
         if(balanceRows.isEmpty) throw StateError('رصيد الصنف غير موجود');
         final pendingQty=(balanceRows.first['unapproved_qty'] as num).toDouble();
@@ -782,12 +854,25 @@ class AppDatabase {
         final oldCost=(b['weighted_average_cost'] as num).toDouble(); final newQty=oldQty+qty;
         final average=newQty==0?0:((oldQty*oldCost)+(qty*cost))/newQty;
         await tx.update('purchase_receipt_lines',{'unit_cost':cost,'line_total':lineTotal},where:'id=?',whereArgs:[lid]);
+        final orderLineId=line['purchase_order_line_id'] as int?;
+        if(orderLineId!=null){
+          final orderLines=await tx.query('purchase_order_lines',where:'id=?',whereArgs:[orderLineId],limit:1);
+          if(orderLines.isEmpty) throw StateError('سطر طلب التوريد المرتبط غير موجود');
+          final previous=(orderLines.first['received_qty'] as num).toDouble();
+          await tx.update('purchase_order_lines',{'received_qty':previous+qty},where:'id=?',whereArgs:[orderLineId]);
+        }
         final pendingQty=(b['unapproved_qty'] as num).toDouble();
         if(pendingQty<qty) throw StateError('كمية الاستلام المعلقة لا تطابق الفاتورة');
         await tx.update('stock_balances',{'on_hand':(b['on_hand'] as num).toDouble(),'approved_qty':newQty,'unapproved_qty':pendingQty-qty,'weighted_average_cost':average,'updated_at':now},where:'product_id=?',whereArgs:[pid]);
         await tx.insert('stock_movements',{'product_id':pid,'movement_type':'purchase_approved','quantity_delta':0,'source_type':'purchase_receipt','source_id':receiptId,'idempotency_key':'purchase-approved:'+receiptId.toString()+':'+lid.toString(),'actor_user_id':actorUserId,'note':'Approved supplier invoice '+receipt['invoice_no'].toString(),'occurred_at':now});
       }
       await tx.update('purchase_receipts',{'status':'approved','reviewed_by':actorUserId,'reviewed_at':now,'total_cost':total},where:'id=?',whereArgs:[receiptId]);
+      final orderId=receipt['purchase_order_id'] as int?;
+      if(orderId!=null){
+        final remaining=await tx.rawQuery('SELECT COUNT(*) AS n FROM purchase_order_lines WHERE order_id=? AND received_qty+0.000001<ordered_qty',[orderId]);
+        final orderStatus=(remaining.first['n'] as int)==0?'received':'partially_received';
+        await tx.update('purchase_orders',{'status':orderStatus,'updated_at':now},where:'id=?',whereArgs:[orderId]);
+      }
       await tx.insert('supplier_ledger',{'supplier_id':receipt['supplier_id'],'receipt_id':receiptId,'entry_type':'purchase','debit':total,'credit':0,'note':'Supplier invoice '+receipt['invoice_no'].toString(),'actor_user_id':actorUserId,'created_at':now});
       if(total>0) await _postJournal(tx,actorUserId:actorUserId,sourceType:'purchase_receipt',sourceId:receiptId,description:'اعتماد فاتورة توريد '+receipt['invoice_no'].toString(),lines:[{'accountCode':'INVENTORY','debit':total,'credit':0.0},{'accountCode':'AP','debit':0.0,'credit':total}]);
       await tx.insert('audit_logs',{'actor_user_id':actorUserId,'action':'purchase_receipt_approved','entity_type':'purchase_receipt','entity_id':receiptId,'details':'Approved supplier invoice; total='+total.toString(),'created_at':now});
